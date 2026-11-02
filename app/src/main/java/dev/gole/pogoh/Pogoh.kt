@@ -19,6 +19,7 @@ data class NearbyStation(
     val docks: Int,
     val distanceM: Double,
     val bearingDeg: Double,
+    val renting: Boolean,
 )
 
 /**
@@ -29,7 +30,8 @@ object Pogoh {
     private const val BASE = "https://pittsburgh.publicbikesystem.net/customer/gbfs/v2/"
     private const val DISCOVERY = BASE + "gbfs.json"
 
-    fun nearest(userLat: Double, userLon: Double, count: Int = 3): List<NearbyStation> {
+    /** Every installed station (including empty ones), nearest first. */
+    fun stations(userLat: Double, userLon: Double): List<NearbyStation> {
         val (infoUrl, statusUrl) = feedUrls()
         val info = getJson(infoUrl).getJSONObject("data").getJSONArray("stations")
         val status = getJson(statusUrl).getJSONObject("data").getJSONArray("stations")
@@ -45,10 +47,9 @@ object Pogoh {
         for (i in 0 until info.length()) {
             val st = info.getJSONObject(i)
             val s = live[st.getString("station_id")] ?: continue
-            if (!flag(s, "is_installed", true) || !flag(s, "is_renting", true)) continue
+            if (!flag(s, "is_installed", true)) continue
 
             val total = s.optInt("num_bikes_available", s.optInt("num_vehicles_available", 0))
-            if (total <= 0) continue
             val ebikes = s.optJSONObject("num_bikes_available_types")?.optInt("ebike", 0) ?: 0
 
             val lat = st.getDouble("lat")
@@ -60,10 +61,15 @@ object Pogoh {
                 docks = s.optInt("num_docks_available", 0),
                 distanceM = haversine(userLat, userLon, lat, lon),
                 bearingDeg = bearing(userLat, userLon, lat, lon),
+                renting = flag(s, "is_renting", true),
             )
         }
-        return out.sortedBy { it.distanceM }.take(count)
+        return out.sortedBy { it.distanceM }
     }
+
+    /** Nearest stations you can actually rent from right now. */
+    fun withBikes(all: List<NearbyStation>, count: Int = 3) =
+        all.filter { it.renting && it.bikes > 0 }.take(count)
 
     /** Uses the discovery file; falls back to PBSC's standard paths if it changes shape. */
     private fun feedUrls(): Pair<String, String> {

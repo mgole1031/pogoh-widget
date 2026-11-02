@@ -11,8 +11,18 @@ android {
         applicationId = "dev.gole.pogoh"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+    }
+
+    // Fixed key so every CI build can install over the previous one.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("pogoh-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {

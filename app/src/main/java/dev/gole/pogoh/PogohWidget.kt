@@ -9,10 +9,12 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.CancellationSignal
 import android.view.View
 import android.widget.RemoteViews
@@ -57,16 +59,31 @@ class PogohWidget : AppWidgetProvider() {
             render(ctx) { it.setTextViewText(R.id.status, "No GPS fix — tap ⟳") }
             return
         }
-        val stations = try {
-            Pogoh.nearest(loc.latitude, loc.longitude, 3)
+        val all = try {
+            Pogoh.stations(loc.latitude, loc.longitude)
         } catch (e: Exception) {
             render(ctx) { it.setTextViewText(R.id.status, "Feed error — tap ⟳") }
             return
+        }
+        val stations = Pogoh.withBikes(all, 3)
+        val map = try {
+            buildMap(ctx, loc.latitude, loc.longitude, all, stations)
+        } catch (e: Exception) {
+            null
         }
 
         val time = SimpleDateFormat("h:mm a", Locale.US).format(Date())
         render(ctx, full = true) { v ->
             v.setTextViewText(R.id.status, if (stations.isEmpty()) "No bikes nearby · $time" else "Updated $time")
+            if (map != null) {
+                v.setImageViewBitmap(R.id.map, map)
+                // Tap map -> Google Maps around you
+                val open = Intent(Intent.ACTION_VIEW, Uri.parse("geo:${loc.latitude},${loc.longitude}?z=16"))
+                v.setOnClickPendingIntent(
+                    R.id.map,
+                    PendingIntent.getActivity(ctx, 99, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                )
+            }
             for (i in 0 until 3) {
                 val row = ROWS[i]
                 val s = stations.getOrNull(i)
@@ -92,6 +109,30 @@ class PogohWidget : AppWidgetProvider() {
                 )
             }
         }
+    }
+
+    override fun onAppWidgetOptionsChanged(ctx: Context, mgr: AppWidgetManager, id: Int, opts: Bundle) {
+        refresh(ctx) // widget was resized -> redraw map at the new size
+    }
+
+    /** Sizes the map bitmap to the widget's current size (portrait: min width × max height). */
+    private fun buildMap(
+        ctx: Context, lat: Double, lon: Double, all: List<NearbyStation>, top: List<NearbyStation>,
+    ): Bitmap {
+        val mgr = AppWidgetManager.getInstance(ctx)
+        val id = mgr.getAppWidgetIds(ComponentName(ctx, PogohWidget::class.java)).first()
+        val o = mgr.getAppWidgetOptions(id)
+        val wDp = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 320).takeIf { it > 0 } ?: 320
+        val hDp = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 280).takeIf { it > 0 } ?: 280
+        // widget padding 24 + header ~24 + map margins 12 + three 40dp rows
+        val mapWDp = (wDp - 24).coerceAtLeast(150)
+        val mapHDp = (hDp - 24 - 24 - 12 - 120).coerceIn(90, 400)
+        // Cap pixels so the bitmap stays well under the ~1 MB widget transfer limit.
+        val screen = ctx.resources.displayMetrics.density
+        val d = minOf(screen, 700f / mapWDp, 420f / mapHDp)
+        return MapRenderer.render(
+            ctx, (mapWDp * d).toInt(), (mapHDp * d).toInt(), d, lat, lon, all, top,
+        )
     }
 
     private fun hideRows(v: RemoteViews) = ROWS.forEach { v.setViewVisibility(it[0], View.INVISIBLE) }
