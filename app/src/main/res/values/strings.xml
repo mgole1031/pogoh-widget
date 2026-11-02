@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">POGOH Nearby</string>
+    <string name="widget_desc">Nearest POGOH stations with bikes, distance and direction</string>
+</resources>
