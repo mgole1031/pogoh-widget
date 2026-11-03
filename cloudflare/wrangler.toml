@@ -1,0 +1,14 @@
+name = "pogoh-collector"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+[triggers]
+crons = ["* * * * *"]   # every minute
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pogoh"
+database_id = "__D1_ID__"   # filled in by the deploy workflow
+
+[vars]
+GBFS_BASE = "https://pittsburgh.publicbikesystem.net/customer/gbfs/v2/"
